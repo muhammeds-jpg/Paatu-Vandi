@@ -11,7 +11,7 @@ import Image from "next/image";
 export function Hero() {
   return (
     <section
-      className="stage flex items-start justify-center px-5 sm:px-6 pt-2"
+      className="stage flex items-start justify-center px-5 sm:px-6 pt-10"
       aria-label="Pattu Vandi"
     >
       <div className="anim-stage flex flex-col items-center text-center">
