@@ -340,6 +340,16 @@
   }
 }
 
+.backdrop {
+  object-position: 28% center;
+}
+
+@media (min-width: 640px) {
+  .backdrop {
+    object-position: center;
+  }
+}
+
 .is-playing .backdrop {
   animation: drift 36s ease-in-out infinite;
 }

@@ -316,7 +316,7 @@ export function PattuVandi() {
             loop
             muted
             playsInline
-            className="backdrop object-cover object-center absolute inset-0 w-full h-full blur-[2px]"
+            className="backdrop object-cover absolute inset-0 w-full h-full blur-[2px]"
           >
             <source src="/pattu-vandi-background-video.mp4" type="video/mp4" />
           </video>
