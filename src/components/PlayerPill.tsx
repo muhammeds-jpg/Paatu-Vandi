@@ -153,7 +153,7 @@ export function PlayerPill() {
           <div className="disc-spin relative h-full w-full overflow-hidden rounded-full bg-black/40">
             <Image
               key={track.id}
-              src={track.image}
+              src={track.image || "/Favicon.png"}
               alt=""
               aria-hidden
               fill

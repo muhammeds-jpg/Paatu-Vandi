@@ -28,74 +28,42 @@ const sharp = require("sharp");
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PUBLIC = join(ROOT, "public");
-const BACKDROP = join(PUBLIC, "pattu-vandi-backdrop.png");
+const FAVICON_SRC = join(PUBLIC, "Favicon.png");
 const LOGO = join(PUBLIC, "pattu-vandi-logo.svg");
 
 /**
- * A square crop of the illustration.
- *
- * Taken from the full height and centred horizontally, which lands on the bus —
- * the thing the picture is actually about. `zoom` above 1 tightens in, for the
- * small sizes where a wide view turns to mush.
+ * Creates a dark ambient background matching the site theme (#0b0908).
  */
-async function squareBackdrop(size, zoom = 1) {
-  const meta = await sharp(BACKDROP).metadata();
-  const side = Math.round(Math.min(meta.width, meta.height) / zoom);
-  return sharp(BACKDROP)
-    .extract({
-      left: Math.round((meta.width - side) / 2),
-      top: Math.round((meta.height - side) / 2),
-      width: side,
-      height: side,
-    })
-    .resize(size, size, { fit: "cover" })
-    .toBuffer();
-}
-
-/**
- * A scrim under the logo.
- *
- * The illustration is busy and mid-toned, and gold type laid straight onto it
- * disappears into the bus. Darkening the middle a little buys the contrast back
- * without flattening the picture into a grey square.
- */
-function scrim(size) {
+function darkBackground(width, height) {
   return Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
        <defs>
-         <radialGradient id="s" cx="50%" cy="50%" r="72%">
-           <stop offset="0%"   stop-color="#000" stop-opacity="0.62"/>
-           <stop offset="55%"  stop-color="#000" stop-opacity="0.42"/>
-           <stop offset="100%" stop-color="#000" stop-opacity="0.20"/>
+         <radialGradient id="bg" cx="50%" cy="50%" r="75%">
+           <stop offset="0%"   stop-color="#181310"/>
+           <stop offset="60%"  stop-color="#0e0b09"/>
+           <stop offset="100%" stop-color="#080706"/>
          </radialGradient>
        </defs>
-       <rect width="${size}" height="${size}" fill="url(#s)"/>
+       <rect width="${width}" height="${height}" fill="url(#bg)"/>
      </svg>`,
   );
 }
 
-/** The logo rendered at a share of the icon's width. */
-async function logoAt(size, widthRatio) {
-  const target = Math.round(size * widthRatio);
-  return sharp(LOGO, { density: 600 })
-    .resize({ width: target, fit: "inside" })
+/**
+ * Composites the green music van favicon image onto a dark rounded background for app icons.
+ */
+async function composeIcon({ size, iconRatio = 0.75 }) {
+  const bg = darkBackground(size, size);
+  const targetWidth = Math.round(size * iconRatio);
+  
+  const iconBuffer = await sharp(FAVICON_SRC)
+    .resize({ width: targetWidth, height: targetWidth, fit: "contain" })
     .png()
     .toBuffer();
-}
 
-async function compose({ size, logoRatio, zoom }) {
-  const [base, logo] = await Promise.all([
-    squareBackdrop(size, zoom),
-    logoAt(size, logoRatio),
-  ]);
-
-  return sharp(base)
+  return sharp(bg)
     .composite([
-      { input: scrim(size), blend: "over" },
-      // `gravity: center` rather than computed offsets: the logo's rendered
-      // height depends on how sharp rounds the aspect ratio, and centring by
-      // hand drifts a pixel or two at some sizes.
-      { input: logo, gravity: "center" },
+      { input: iconBuffer, gravity: "center" },
     ])
     .png({ compressionLevel: 9 })
     .toBuffer();
@@ -104,75 +72,59 @@ async function compose({ size, logoRatio, zoom }) {
 /* ── Run ─────────────────────────────────────────────────────────────────── */
 
 const TARGETS = [
-  // Shown as-is; the logo may run wide.
-  { file: "icon-192.png", size: 192, logoRatio: 0.82, zoom: 1.15 },
-  { file: "icon-512.png", size: 512, logoRatio: 0.8, zoom: 1 },
-  // Clipped to a circle/squircle: the logo stays inside the central 80%.
-  { file: "icon-192-maskable.png", size: 192, logoRatio: 0.6, zoom: 1.15 },
-  { file: "icon-512-maskable.png", size: 512, logoRatio: 0.58, zoom: 1 },
-  // iOS rounds the corners itself, so treat it as partly masked.
-  { file: "apple-touch-icon.png", size: 180, logoRatio: 0.72, zoom: 1.15 },
+  // Shown as-is; full app icon sizes
+  { file: "icon-192.png", size: 192, iconRatio: 0.78 },
+  { file: "icon-512.png", size: 512, iconRatio: 0.78 },
+  // Clipped to a circle/squircle: icon stays inside the central 68% safe zone.
+  { file: "icon-192-maskable.png", size: 192, iconRatio: 0.65 },
+  { file: "icon-512-maskable.png", size: 512, iconRatio: 0.65 },
+  // iOS touch icon
+  { file: "apple-touch-icon.png", size: 180, iconRatio: 0.75 },
 ];
 
 for (const target of TARGETS) {
-  const png = await compose(target);
+  const png = await composeIcon(target);
   writeFileSync(join(PUBLIC, target.file), png);
   console.log(`  ${target.file.padEnd(26)} ${target.size}px  ${Math.round(png.length / 1024)}KB`);
 }
 
-/**
- * The favicon. Zoomed in hard and with a proportionally larger logo, because a
- * browser tab renders this at 16px — a wide view of a busy illustration becomes
- * an indistinct smudge at that size, while a tight crop still reads as warm gold
- * on dark.
- */
-const favicon = await compose({ size: 96, logoRatio: 0.88, zoom: 1.6 });
+/** Favicon for browser tabs (src/app/icon.png) */
+const favicon = await composeIcon({ size: 96, iconRatio: 0.85 });
 writeFileSync(join(ROOT, "src", "app", "icon.png"), favicon);
 console.log(`  src/app/icon.png           96px  ${Math.round(favicon.length / 1024)}KB`);
 
+/** Also update public/Favicon.png so it stays consistent */
+writeFileSync(join(PUBLIC, "Favicon.png"), await sharp(FAVICON_SRC).png().toBuffer());
+
 /**
- * The social card, 1200x630.
- *
- * Wide rather than square, so it takes the illustration almost uncropped — this
- * is the one place the full scene fits. Written as a static PNG rather than
- * rendered per request: a card is fetched by a crawler once and then cached
- * essentially forever, so paying to draw it at runtime buys nothing, and a
- * runtime failure would bake a blank card into every social platform's cache.
+ * The social share card (1200x630 opengraph-image.jpg) for WhatsApp / Twitter / FB.
+ * Combines the green music van favicon image and the gold logo on a dark ambient background.
  */
 async function socialCard() {
   const width = 1200;
   const height = 630;
 
-  const base = await sharp(BACKDROP).resize(width, height, { fit: "cover" }).toBuffer();
-  const logo = await sharp(LOGO, { density: 600 })
-    .resize({ width: Math.round(width * 0.6), fit: "inside" })
+  const bg = darkBackground(width, height);
+
+  // Resize green music van favicon icon
+  const vanIcon = await sharp(FAVICON_SRC)
+    .resize({ width: 220, fit: "inside" })
     .png()
     .toBuffer();
 
-  const wash = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
-       <defs>
-         <radialGradient id="s" cx="50%" cy="48%" r="70%">
-           <stop offset="0%"   stop-color="#000" stop-opacity="0.58"/>
-           <stop offset="100%" stop-color="#000" stop-opacity="0.30"/>
-         </radialGradient>
-       </defs>
-       <rect width="${width}" height="${height}" fill="url(#s)"/>
-     </svg>`,
-  );
+  // Resize gold logo
+  const logo = await sharp(LOGO, { density: 600 })
+    .resize({ width: 680, fit: "inside" })
+    .png()
+    .toBuffer();
 
   return (
-    sharp(base)
+    sharp(bg)
       .composite([
-        { input: wash, blend: "over" },
-        { input: logo, gravity: "center" },
+        { input: vanIcon, top: 120, left: Math.round((width - 220) / 2) },
+        { input: logo, top: 340, left: Math.round((width - 680) / 2) },
       ])
-      // JPEG, not PNG: this is a painted scene with thousands of colours and no
-      // transparency, which is the case PNG is worst at — it came out at 1.3MB
-      // against roughly a tenth of that here, with nothing visible lost. Some
-      // platforms are strict about card weight, and a rejected card shows
-      // nothing at all.
-      .jpeg({ quality: 86, chromaSubsampling: "4:4:4", mozjpeg: true })
+      .jpeg({ quality: 90, chromaSubsampling: "4:4:4", mozjpeg: true })
       .toBuffer()
   );
 }
@@ -184,5 +136,4 @@ console.log(
 );
 
 console.log(`
-Done. Next serves src/app/icon.png and src/app/opengraph-image.jpg by file
-convention; the rest are referenced from src/app/manifest.ts.`);
+Done. Generated app icons and opengraph-image.jpg using the green music van favicon image.`);

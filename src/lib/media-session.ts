@@ -45,7 +45,9 @@ export function isSupported(): boolean {
  * 640px jpeg. The list is a hint; the OS picks what it wants.
  */
 function artworkFor(track: Track): MediaImage[] {
-  if (!track.image) return [];
+  if (!track.image) {
+    return [{ src: "/Favicon.png", sizes: "512x512", type: "image/png" }];
+  }
   const sizes: [string, string][] = [
     ["ab67616d00004851", "64x64"],
     ["ab67616d00001e02", "300x300"],
@@ -121,7 +123,7 @@ export function setPositionState(positionMs: number, durationMs: number): void {
 /** Attach once. Returns a function that removes every handler again. */
 export function registerHandlers(handlers: Handlers): () => void {
   const ms = session();
-  if (!ms) return () => {};
+  if (!ms) return () => { };
 
   const bindings: [MediaSessionAction, MediaSessionActionHandler][] = [
     ["play", () => handlers.onPlay()],
