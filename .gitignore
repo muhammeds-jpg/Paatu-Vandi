@@ -39,6 +39,10 @@ yarn-error.log*
 .env*
 !.env.example
 
+# Spotify login cache for `npm run sync`. Holds a REFRESH TOKEN — a long-lived
+# credential granting access to the account's playlists. Never commit it.
+.spotify-token.json
+
 # NOTE: /public/covers is deliberately NOT ignored. The importer downloads the
 # artwork once and the site serves it from this origin, so the files have to be
 # committed or a deploy ships a catalogue with no covers.

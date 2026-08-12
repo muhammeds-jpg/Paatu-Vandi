@@ -21,6 +21,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { getUserToken, readPlaylistWithToken } from "./lib/spotify-auth.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "src", "config", "catalogue.generated.ts");
@@ -161,8 +162,20 @@ async function readPlaylist(id) {
       previewUrl: t.audioPreview?.url ?? "",
     }));
 
-  return { name: String(entity.name ?? entity.title ?? "").trim(), tracks };
+  return {
+    name: String(entity.name ?? entity.title ?? "").trim(),
+    tracks,
+    // The embed hard-stops at 100, ignores offset/limit entirely, and carries
+    // no total — so exactly 100 is indistinguishable from "a 250-track playlist
+    // truncated". Flagged here so the caller can say so out loud rather than
+    // quietly shipping the first 100.
+    maybeTruncated: tracks.length >= EMBED_TRACK_CAP,
+    source: "embed",
+  };
 }
+
+/** What the public embed will never exceed, no matter what you ask it for. */
+const EMBED_TRACK_CAP = 100;
 
 /**
  * Per-track album art. The playlist blob only carries the playlist's own cover,
@@ -430,6 +443,24 @@ ${rows}
 const ENV_FILE = join(ROOT, ".env.local");
 const ENV_KEY = "NEXT_PUBLIC_SPOTIFY_PLAYLIST_ID";
 
+/**
+ * One value out of `.env.local`, falling back to the real environment.
+ *
+ * Deliberately minimal rather than pulling in dotenv: this reads three keys at
+ * most, and a dependency that parses credentials is a dependency worth not
+ * having. Values are never logged.
+ */
+function envValue(key) {
+  if (existsSync(ENV_FILE)) {
+    const m = readFileSync(ENV_FILE, "utf8").match(new RegExp(`^${key}\\s*=\\s*(.*)$`, "m"));
+    if (m) {
+      const v = m[1].trim().replace(/^["']|["']$/g, "");
+      if (v) return v;
+    }
+  }
+  return process.env[key] ?? "";
+}
+
 function playlistIdFromEnv() {
   if (existsSync(ENV_FILE)) {
     const m = readFileSync(ENV_FILE, "utf8").match(
@@ -479,7 +510,47 @@ Or set NEXT_PUBLIC_SPOTIFY_PLAYLIST_ID in .env.local and just run \`npm run sync
 }
 
 console.log(`\nPlaylist ${playlistId}`);
-const { name, tracks } = await readPlaylist(playlistId);
+
+/**
+ * Read the playlist the best way available.
+ *
+ * The official API is preferred and is the ONLY way to get past 100 tracks, but
+ * it needs a signed-in user: an app token answers 403 on `/tracks`, 401 on
+ * `/items`, and Spotify strips `tracks` from the playlist object entirely. The
+ * credential-free embed is kept as the fallback so a sync still works with no
+ * setup — it just cannot see past the first 100.
+ */
+async function loadPlaylist(id) {
+  const wantsLogin = process.argv.includes("--login");
+  const noLogin = process.argv.includes("--no-login");
+  const config = {
+    clientId: envValue("SPOTIFY_CLIENT_ID"),
+    clientSecret: envValue("SPOTIFY_CLIENT_SECRET"),
+    redirectUri: envValue("SPOTIFY_REDIRECT_URI"),
+  };
+
+  if (!noLogin && config.clientId && config.clientSecret && config.redirectUri) {
+    try {
+      // Only opens a browser when explicitly asked, or when a saved login can
+      // be renewed silently.
+      const token = await getUserToken(ROOT, config, wantsLogin);
+      if (token) {
+        const full = await readPlaylistWithToken(id, token);
+        if (full.tracks.length) {
+          console.log(`  read via the official Spotify API (signed in) — no 100-track limit`);
+          return { ...full, maybeTruncated: false, source: "api" };
+        }
+      }
+    } catch (err) {
+      console.log(`  official API unavailable: ${err.message}`);
+      console.log(`  falling back to the public embed (first 100 tracks only)\n`);
+    }
+  }
+
+  return readPlaylist(id);
+}
+
+const { name, tracks, maybeTruncated, total } = await loadPlaylist(playlistId);
 
 if (!tracks.length) {
   console.error(
@@ -488,8 +559,30 @@ if (!tracks.length) {
   process.exit(1);
 }
 
-console.log(`"${name}" — ${tracks.length} track${tracks.length === 1 ? "" : "s"}\n`);
-console.log("Matching each track to a YouTube video for full-length playback:\n");
+console.log(
+  `"${name}" — ${tracks.length} track${tracks.length === 1 ? "" : "s"}` +
+    (total && total !== tracks.length ? ` of ${total}` : ""),
+);
+
+// Say it plainly rather than quietly shipping a partial playlist. This is the
+// bug that turned a 250-track playlist into 100 without a word.
+if (maybeTruncated) {
+  console.log(`
+  ⚠  THIS MAY NOT BE THE WHOLE PLAYLIST.
+
+     The public Spotify embed returns at most ${EMBED_TRACK_CAP} tracks, ignores every
+     paging parameter, and reports no total — so ${tracks.length} could be the whole
+     list, or the first ${EMBED_TRACK_CAP} of many more.
+
+     To read all of it, sign in once:
+
+         npm run sync -- ${playlistId} --login
+
+     That opens Spotify in your browser and remembers the login, so later syncs
+     need no browser. Stop \`npm run dev\` first — the login briefly needs port 3000.`);
+}
+
+console.log(`\nMatching each track to a YouTube video for full-length playback:\n`);
 
 /**
  * A few tracks at a time, results kept in playlist order.
@@ -531,7 +624,13 @@ function report(position, total, title, video, wantMs, prefix = "") {
 
 let done = 0;
 const out = await mapLimit(tracks, 3, async (t, i) => {
-  const [art, video] = await Promise.all([albumArt(t.spotifyId), findVideo(t)]);
+  // The official API already returns artwork and the album name, so only the
+  // embed path needs the extra per-track fetch. On a 250-track playlist that is
+  // 250 requests saved, and 250 fewer scrapes.
+  const [art, video] = await Promise.all([
+    t.image ? Promise.resolve({ image: t.image, album: t.album ?? "" }) : albumArt(t.spotifyId),
+    findVideo(t),
+  ]);
 
   done++;
   report(done, tracks.length, `[${String(i + 1).padStart(3)}] ${t.title}`, video, t.durationMs);

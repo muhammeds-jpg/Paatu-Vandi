@@ -10,9 +10,6 @@
   --color-ink-soft: #cdc3b6;
   --color-ink-faint: #8d8377;
   --color-terracotta: #c2603f;
-  /* The gold the title logo is drawn in. Anything that sits beside the mark
-     uses this same value so the two read as one piece of branding. */
-  --color-gold: #e0b24e;
 
   --font-sans: var(--font-sans-stack), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-display), ui-serif, Georgia, serif;
@@ -121,29 +118,18 @@
   font-size: 0.6875rem;
   letter-spacing: 0.34em;
   text-transform: uppercase;
-  /* Gold rather than faded ink: it is the only other type on the stage, and
-     matching the logo makes it read as part of the mark instead of a caption. */
-  color: var(--color-gold);
+  /* Faded ink, not a colour of its own: the logo is the only thing on the stage
+     meant to carry weight, and a tinted caption would compete with it. */
+  color: color-mix(in srgb, var(--color-ink) 55%, transparent);
   text-indent: 0.34em; /* optical: letter-spacing pads the right edge only */
 }
 
-/* The other small caption on the stage. Same gold as the eyebrow and the logo,
-   so all three read as one mark rather than three unrelated bits of type. */
-.press-hint {
-  color: var(--color-gold);
-}
-
-/* The wordmark is a drawn logo, so it is sized by width, not by font-size.
-   The floor keeps it inside a 280px viewport once .stage padding is taken out;
-   the ceiling stops it outgrowing the stage on a desktop monitor. */
+/* The wordmark is a drawn logo, sized via width/height attributes in the
+   component. */
 .wordmark {
   display: block;
-  width: clamp(15rem, 74vw, 40rem);
   height: auto;
-  /* Both axes get constrained at short viewport heights; contain keeps the
-     drawing from stretching when they fight. */
   object-fit: contain;
-  filter: drop-shadow(0 2px 40px rgb(0 0 0 / 0.5));
 }
 
 .track-title {

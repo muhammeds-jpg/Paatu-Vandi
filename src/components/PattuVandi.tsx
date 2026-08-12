@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+
 import { useEffect } from "react";
 import type { Track } from "@/lib/types";
 import { usePlayerStore, useCurrentTrack, useDurationMs } from "@/lib/player-store";
@@ -309,31 +309,17 @@ export function PattuVandi() {
       */}
       <div className={isPlaying ? "is-playing" : undefined}>
         <div className="pointer-events-none fixed inset-0 z-0" aria-hidden>
-          {/* Served from public/. next/image still optimises it: the 6.9MB PNG
-              goes out as a ~43KB WebP at this size. */}
-          <Image
-            src="/pattu-vandi-backdrop.png"
-            alt=""
-            fill
-            priority
-            quality={85}
-            sizes="100vw"
-            className="backdrop object-cover object-center"
-          />
-
-          {/* Scrim, in three passes rather than one flat wash:
-              a vertical fall-off to seat the top bar and the player, a corner
-              vignette to hold the eye centre-frame, and a warm multiply so the
-              cream type sits in the same light as the illustration. */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/20 to-black/75" />
-          <div
-            className="absolute inset-0"
-            style={{
-              background:
-                "radial-gradient(120% 80% at 50% 40%, transparent 30%, rgba(0,0,0,0.55) 100%)",
-            }}
-          />
-          <div className="absolute inset-0 bg-[#2a140a] opacity-10 mix-blend-multiply" />
+          {/* Animated backdrop video — replaces the static PNG.
+              Autoplays muted and loops to create a living background. */}
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="backdrop object-cover object-center absolute inset-0 w-full h-full blur-[2px]"
+          >
+            <source src="/pattu-vandi-background-video.mp4" type="video/mp4" />
+          </video>
         </div>
 
         {/* Grain sits above the artwork but below the UI. */}
